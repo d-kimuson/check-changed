@@ -149,10 +149,11 @@ program
 
 program
   .command('setup')
-  .description('Interactively create or update .check-changedrc.json')
-  .action(async () => {
+  .description('Create or update .check-changedrc.json')
+  .option('--non-interactive', 'Skip prompts and use defaults with auto-detected presets')
+  .action(async (opts: { nonInteractive?: boolean }) => {
     const { runSetup } = await import('./setup.ts');
-    await runSetup(process.cwd());
+    await runSetup(process.cwd(), { nonInteractive: opts.nonInteractive });
   });
 
 program.parseAsync().catch((error: unknown) => {

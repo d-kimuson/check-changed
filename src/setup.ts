@@ -8,8 +8,15 @@ import { detectPackageManager, getExecutor, getRunner } from './pm.ts';
 import { presets } from './presets.ts';
 import type { CheckConfig } from './types.ts';
 
+export type SetupOptions = {
+  readonly nonInteractive?: boolean;
+};
+
 type Config = v.InferOutput<typeof ConfigSchema>;
 type CheckEntry = Config['checks'][string];
+
+const DEFAULT_CHANGED = 'untracked,unstaged,staged,branch:main';
+const DEFAULT_TARGET = 'all';
 
 const promptDefaults = async (existing?: Config['defaults']): Promise<Config['defaults']> => {
   const answers = await inquirer.prompt<{ changed: string; target: string }>([
@@ -17,17 +24,22 @@ const promptDefaults = async (existing?: Config['defaults']): Promise<Config['de
       type: 'input',
       name: 'changed',
       message: 'Default changed sources (comma-separated):',
-      default: existing?.changed ?? 'untracked,unstaged,staged,branch:main',
+      default: existing?.changed ?? DEFAULT_CHANGED,
     },
     {
       type: 'input',
       name: 'target',
       message: "Default target groups (comma-separated or 'all'):",
-      default: existing?.target ?? 'all',
+      default: existing?.target ?? DEFAULT_TARGET,
     },
   ]);
   return { changed: answers.changed, target: answers.target };
 };
+
+const resolveDefaults = (existing?: Config['defaults']): Config['defaults'] => ({
+  changed: existing?.changed ?? DEFAULT_CHANGED,
+  target: existing?.target ?? DEFAULT_TARGET,
+});
 
 const presetDependencies: Record<string, readonly string[]> = {
   prettier: ['prettier'],
@@ -114,6 +126,31 @@ const promptPresets = async (
   return Object.fromEntries(entries);
 };
 
+const autoSelectPresets = (
+  existingChecks: Record<string, CheckEntry>,
+  executor: string,
+  installedDeps: ReadonlySet<string>,
+): Record<string, CheckEntry> => {
+  const existingNames = new Set(Object.keys(existingChecks));
+
+  const entries = presets
+    .filter((p) => isPresetDetected(p.name, existingNames, installedDeps))
+    .flatMap((preset) => {
+      const checkEntries: readonly (readonly [string, CheckConfig])[] = Object.entries(
+        preset.checks,
+      );
+      return checkEntries.map(([checkName, checkConfig]) => {
+        const existing: CheckEntry | undefined = existingChecks[checkName];
+        return [
+          checkName,
+          existing ?? { ...checkConfig, command: prefixCommand(checkConfig.command, executor) },
+        ] as const;
+      });
+    });
+
+  return Object.fromEntries(entries);
+};
+
 // -- Claude Code hooks --
 
 const StopHookEntrySchema = v.object({
@@ -177,6 +214,35 @@ const promptClaudeCodeHooks = async (cwd: string, runner: string): Promise<void>
   ]);
 
   if (!enable) return;
+
+  const hookEntry = {
+    matcher: '',
+    hooks: [{ type: 'command', command }],
+  };
+
+  const existingStop = settings.hooks?.Stop ?? [];
+  const updated = {
+    ...settings,
+    hooks: {
+      ...settings.hooks,
+      Stop: [...existingStop, hookEntry],
+    },
+  };
+
+  await mkdir(dirname(settingsPath), { recursive: true });
+  await writeFile(settingsPath, `${JSON.stringify(updated, null, 2)}\n`);
+  log(`Claude Code hook written to ${settingsPath}`);
+};
+
+const setupClaudeCodeHooks = async (cwd: string, runner: string): Promise<void> => {
+  const settingsPath = resolveClaudeSettingsPath(cwd);
+  const command = `${runner} check-changed run --format claude-code-hooks`;
+  const settings = await readClaudeSettings(settingsPath);
+
+  if (hasStopHook(settings, command)) {
+    log('Claude Code Stop hook is already configured.');
+    return;
+  }
 
   const hookEntry = {
     matcher: '',
@@ -274,9 +340,37 @@ const promptCopilotCliHooks = async (cwd: string, runner: string): Promise<void>
   log(`Copilot CLI hook written to ${hooksPath}`);
 };
 
+const setupCopilotCliHooks = async (cwd: string, runner: string): Promise<void> => {
+  const hooksPath = resolveCopilotHooksPath(cwd);
+  const bash = `${runner} check-changed run --format copilot-cli-hooks`;
+  const config = await readCopilotHooksFile(hooksPath);
+
+  if (hasCopilotAgentStopHook(config, bash)) {
+    log('Copilot CLI agentStop hook is already configured.');
+    return;
+  }
+
+  const hookEntry = { type: 'command', bash };
+  const existingAgentStop = config.hooks?.agentStop ?? [];
+  const updated = {
+    ...config,
+    version: config.version,
+    hooks: {
+      ...config.hooks,
+      agentStop: [...existingAgentStop, hookEntry],
+    },
+  };
+
+  await mkdir(dirname(hooksPath), { recursive: true });
+  await writeFile(hooksPath, `${JSON.stringify(updated, null, 2)}\n`);
+  log(`Copilot CLI hook written to ${hooksPath}`);
+};
+
 // -- Main --
 
-export const runSetup = async (cwd: string): Promise<void> => {
+export const runSetup = async (cwd: string, options?: SetupOptions): Promise<void> => {
+  const nonInteractive = options?.nonInteractive === true;
+
   let existing: Config | undefined;
   try {
     existing = await loadConfig(cwd);
@@ -293,8 +387,12 @@ export const runSetup = async (cwd: string): Promise<void> => {
 
   const installedDeps = existing ? new Set<string>() : await readInstalledDeps(cwd);
 
-  const defaults = await promptDefaults(existing?.defaults);
-  const checks = await promptPresets(existing?.checks ?? {}, executor, installedDeps);
+  const defaults = nonInteractive
+    ? resolveDefaults(existing?.defaults)
+    : await promptDefaults(existing?.defaults);
+  const checks = nonInteractive
+    ? autoSelectPresets(existing?.checks ?? {}, executor, installedDeps)
+    : await promptPresets(existing?.checks ?? {}, executor, installedDeps);
 
   const config = {
     $schema: './node_modules/check-changed/config-schema.json',
@@ -306,8 +404,16 @@ export const runSetup = async (cwd: string): Promise<void> => {
   log(`\nConfig written to ${configPath}`);
 
   log('');
-  await promptClaudeCodeHooks(cwd, runner);
+  if (nonInteractive) {
+    await setupClaudeCodeHooks(cwd, runner);
+  } else {
+    await promptClaudeCodeHooks(cwd, runner);
+  }
 
   log('');
-  await promptCopilotCliHooks(cwd, runner);
+  if (nonInteractive) {
+    await setupCopilotCliHooks(cwd, runner);
+  } else {
+    await promptCopilotCliHooks(cwd, runner);
+  }
 };
