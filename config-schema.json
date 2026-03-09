@@ -1,0 +1,52 @@
+{
+  "type": "object",
+  "properties": {
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "changed": {
+          "type": "string"
+        },
+        "target": {
+          "type": "string"
+        }
+      },
+      "required": ["changed", "target"]
+    },
+    "checks": {
+      "type": "object",
+      "propertyNames": {
+        "type": "string"
+      },
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "pattern": {
+            "type": "string"
+          },
+          "command": {
+            "type": "string"
+          },
+          "group": {
+            "type": "string"
+          },
+          "config": {
+            "type": "object",
+            "properties": {
+              "files-sep": {
+                "type": "string"
+              },
+              "relative": {
+                "type": "boolean"
+              }
+            },
+            "required": []
+          }
+        },
+        "required": ["pattern", "command", "group"]
+      }
+    }
+  },
+  "required": ["defaults", "checks"],
+  "$schema": "http://json-schema.org/draft-07/schema#"
+}
