@@ -54,6 +54,12 @@ const getFormat = (opts: RunOpts): OutputFormat => {
 
 const isSilent = (fmt: OutputFormat): boolean => fmt !== 'text';
 
+const validateRunOptions = (opts: RunOpts, fmt: OutputFormat): void => {
+  if (opts.dryRun === true && fmt !== 'text') {
+    throw new Error('--dry-run can only be used with --format text');
+  }
+};
+
 const getReporter = (fmt: OutputFormat): ((results: readonly CheckResult[]) => boolean) => {
   switch (fmt) {
     case 'json':
@@ -73,8 +79,9 @@ const getReporter = (fmt: OutputFormat): ((results: readonly CheckResult[]) => b
 
 const run = async (opts: RunOpts): Promise<void> => {
   const cwd = process.cwd();
-  const config = await loadConfig(cwd);
   const fmt = getFormat(opts);
+  validateRunOptions(opts, fmt);
+  const config = await loadConfig(cwd);
 
   const changedSources =
     opts.changed !== undefined && opts.changed !== ''
@@ -156,7 +163,7 @@ program
     'Changed sources (comma-separated: untracked,unstaged,staged,branch:<name>,sha:<sha>)',
   )
   .option('-t, --target <groups>', 'Target groups (comma-separated or "all")')
-  .option('-d, --dry-run', 'Show which checks would run without executing them')
+  .option('-d, --dry-run', 'Show which checks would run without executing them (text format only)')
   .addOption(
     new Option('-f, --format <format>', 'Output format').choices([
       'text',

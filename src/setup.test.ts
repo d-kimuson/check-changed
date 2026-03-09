@@ -17,8 +17,6 @@ const HooksStopSchema = v.object({
   }),
 });
 
-
-
 const readJsonFile = async (path: string): Promise<unknown> => {
   const raw = await readFile(path, 'utf-8');
   return JSON.parse(raw) as unknown;
@@ -79,7 +77,7 @@ describe('runSetup --non-interactive', () => {
 
     await runSetup(dir, { nonInteractive: true });
 
-    await expect(readJsonFile(join(dir, '.claude', 'settings.json'))).rejects.toThrow();
+    await expect(readJsonFile(join(dir, '.claude', 'settings.json'))).rejects.toThrow('ENOENT');
   });
 
   test('does not create Copilot CLI hook in non-interactive mode', async () => {
@@ -87,9 +85,9 @@ describe('runSetup --non-interactive', () => {
 
     await runSetup(dir, { nonInteractive: true });
 
-    await expect(
-      readJsonFile(join(dir, '.github', 'hooks', 'check-changed.json')),
-    ).rejects.toThrow();
+    await expect(readJsonFile(join(dir, '.github', 'hooks', 'check-changed.json'))).rejects.toThrow(
+      'ENOENT',
+    );
   });
 
   test('preserves existing config defaults when updating', async () => {

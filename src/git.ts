@@ -18,13 +18,13 @@ const gitCommandForSource = (source: ChangedSource): readonly [string, ...string
     case 'untracked':
       return ['ls-files', '--others', '--exclude-standard'];
     case 'unstaged':
-      return ['diff', '--name-only'];
+      return ['diff', '--name-only', '--diff-filter=d'];
     case 'staged':
-      return ['diff', '--cached', '--name-only'];
+      return ['diff', '--cached', '--name-only', '--diff-filter=d'];
     case 'branch':
-      return ['diff', '--name-only', `${source.name}...HEAD`];
+      return ['diff', '--name-only', '--diff-filter=d', `${source.name}...HEAD`];
     case 'sha':
-      return ['diff', '--name-only', `${source.sha}...HEAD`];
+      return ['diff', '--name-only', '--diff-filter=d', `${source.sha}...HEAD`];
     default: {
       const _exhaustive: never = source;
       throw new Error(`Unknown source type: ${JSON.stringify(_exhaustive)}`);
@@ -40,15 +40,20 @@ const parseFileList = (output: string): readonly string[] =>
 
 const describeSource = (source: ChangedSource): string => {
   switch (source.type) {
+    case 'untracked':
+      return 'untracked files';
+    case 'unstaged':
+      return 'unstaged changes';
+    case 'staged':
+      return 'staged changes';
     case 'branch':
       return `branch '${source.name}'`;
     case 'sha':
       return `sha '${source.sha}'`;
-    case "staged": { throw new Error('Not implemented yet: "staged" case') }
-    case "unstaged": { throw new Error('Not implemented yet: "unstaged" case') }
-    case "untracked": { throw new Error('Not implemented yet: "untracked" case') }
-    default:
-      return source.type;
+    default: {
+      const _exhaustive: never = source;
+      throw new Error(`Unknown source type: ${JSON.stringify(_exhaustive)}`);
+    }
   }
 };
 
