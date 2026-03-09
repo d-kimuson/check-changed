@@ -23,6 +23,7 @@
     "fix": "run-s fix:*",
     "fix:oxlint": "pnpm lint:oxlint --fix --fix-suggestions --fix-dangerously",
     "fix:oxfmt": "oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern",
+    "prepack": "pnpm build",
     "prepare": "lefthook install"
   },
   "dependencies": {
