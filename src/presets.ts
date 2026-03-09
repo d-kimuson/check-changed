@@ -13,7 +13,7 @@ export const presets = [
     checks: {
       prettier: {
         pattern: '\\.((m|c)?(j|t)sx?|json|css|scss|less|html|md|ya?ml)$',
-        command: 'prettier --write --no-error-on-unmatched-pattern {FILES}',
+        command: 'prettier --write --no-error-on-unmatched-pattern {{CHANGED_FILES}}',
         group: 'format',
       },
     },
@@ -24,7 +24,7 @@ export const presets = [
     checks: {
       oxfmt: {
         pattern: '\\.(m|c)?(j|t)sx?$',
-        command: 'oxfmt {FILES}',
+        command: 'oxfmt --write --no-error-on-unmatched-pattern {{CHANGED_FILES}}',
         group: 'format',
       },
     },
@@ -35,7 +35,7 @@ export const presets = [
     checks: {
       eslint: {
         pattern: '\\.(m|c)?(j|t)sx?$',
-        command: 'eslint {FILES}',
+        command: 'eslint {{CHANGED_FILES}}',
         group: 'lint',
       },
     },
@@ -46,7 +46,7 @@ export const presets = [
     checks: {
       oxlint: {
         pattern: '\\.(m|c)?(j|t)sx?$',
-        command: 'oxlint {FILES}',
+        command: 'oxlint --type-aware --fix {{CHANGED_FILES}}',
         group: 'lint',
       },
     },
@@ -55,9 +55,14 @@ export const presets = [
     name: 'biome',
     description: 'Lint & format with Biome',
     checks: {
+      'biome-format': {
+        pattern: '\\.((m|c)?(j|t)sx?|json|jsonc|css)$',
+        command: 'biome format --write {{CHANGED_FILES}}',
+        group: 'format',
+      },
       'biome-check': {
         pattern: '\\.((m|c)?(j|t)sx?|json|jsonc|css)$',
-        command: 'biome check --write {FILES}',
+        command: 'biome check --write {{CHANGED_FILES}}',
         group: 'lint',
       },
     },
@@ -74,12 +79,23 @@ export const presets = [
     },
   },
   {
+    name: 'tsgo',
+    description: 'Type-check with tsgo (native TypeScript)',
+    checks: {
+      'typecheck-tsgo': {
+        pattern: '\\.(m|c)?tsx?$',
+        command: 'tsgo --noEmit',
+        group: 'typecheck',
+      },
+    },
+  },
+  {
     name: 'vitest',
     description: 'Run related tests with Vitest',
     checks: {
       vitest: {
         pattern: '\\.(m|c)?(j|t)sx?$',
-        command: 'vitest related --run {FILES}',
+        command: 'vitest related --run --passWithNoTests {{CHANGED_FILES}}',
         group: 'test',
       },
     },
@@ -90,7 +106,7 @@ export const presets = [
     checks: {
       jest: {
         pattern: '\\.(m|c)?(j|t)sx?$',
-        command: 'jest --findRelatedTests --passWithNoTests {FILES}',
+        command: 'jest --findRelatedTests --passWithNoTests {{CHANGED_FILES}}',
         group: 'test',
       },
     },

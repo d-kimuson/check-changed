@@ -1,72 +1,100 @@
 # check-changed
 
-Run checks (lint, typecheck, format, test, etc.) only against changed files in your git repository.
+A lightweight adapter for running verification tools (typecheck, lint, format, test) against git-changed files.
 
-Think of it as [lint-staged](https://github.com/lint-staged/lint-staged) but not limited to staged files — supports untracked, unstaged, staged, branch diffs, and commit SHAs. Designed as a guardrail for AI-assisted development workflows.
+In AI-native workflows, agents produce large volumes of code changes. Compound guardrails — type checking, linting, testing — let agents receive automated feedback and self-correct in a tight loop. check-changed makes this simple: run `pnpm check-changed run` and it executes your configured checks, scoped to only the files that changed.
+
+Designed for AI agent integration. Ships with built-in support for [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) and [Copilot CLI hooks](https://docs.github.com/en/copilot/reference/cli-command-reference#agentstop--subagentstop-decision-control) — plug it in and it works.
 
 ## Install
 
 ```sh
-npm install -g check-changed
-```
-
-Or run directly with npx:
-
-```sh
-npx check-changed
+pnpm add -D check-changed
 ```
 
 ## Quick Start
 
-Generate a config file interactively:
+Run the interactive setup to generate a `.check-changedrc.json` config file:
 
 ```sh
-check-changed setup
+pnpm check-changed setup
 ```
 
-This presents a list of built-in presets to choose from:
+The setup wizard walks you through three steps:
 
-| Preset   | Command                                                    | Group     |
-| -------- | ---------------------------------------------------------- | --------- |
-| prettier | `prettier --write --no-error-on-unmatched-pattern {FILES}` | format    |
-| oxfmt    | `oxfmt {FILES}`                                            | format    |
-| eslint   | `eslint {FILES}`                                           | lint      |
-| oxlint   | `oxlint {FILES}`                                           | lint      |
-| biome    | `biome check --write {FILES}`                              | lint      |
-| tsc      | `tsc --noEmit`                                             | typecheck |
-| vitest   | `vitest related --run {FILES}`                             | test      |
-| jest     | `jest --findRelatedTests --passWithNoTests {FILES}`        | test      |
-
-The result is a `.check-changedrc.json` in your project root.
+1. **Default changed sources** — Which changed files to check (default: `untracked,unstaged,staged,branch:main`). Set the branch to match your workflow, e.g. `branch:main` or `branch:develop`.
+2. **Default target groups** — Which check groups to run (default: `all`). You can narrow this down with a comma-separated list like `lint,typecheck`.
+3. **Preset selection** — Detects installed dependencies from your `package.json` and pre-selects matching presets (prettier, oxfmt, eslint, oxlint, biome, tsc, tsgo, vitest, jest). Pick the ones you need.
 
 ## Usage
 
 ```sh
-# Run all checks using defaults from config
-check-changed
+# Run all checks with config defaults
+pnpm check-changed run
 
-# Only check staged files
-check-changed --changed staged
-
-# Only run lint group
-check-changed --target lint
-
-# Combine options
-check-changed --changed branch:main --target lint,typecheck
-
-# Preview what would run without executing
-check-changed --dry-run
-
-# Machine-readable JSON output
-check-changed --format json
+# Specify changed sources and target groups
+pnpm check-changed run --changed untracked,unstaged,staged,branch:dev --target typecheck,lint
 ```
 
-## Configuration
+### As a guardrail for AI agents
 
-`.check-changedrc.json`:
+Add a completion check to your `CLAUDE.md` (or equivalent context file) so the AI runs checks after making changes:
+
+````markdown
+## Completion Criteria
+
+Before completing the task, run the following and fix any errors:
+
+```sh
+pnpm check-changed run
+```
+````
+
+You can also use [Claude Code hooks](https://docs.anthropic.com/en/docs/claude-code/hooks) to automatically enforce checks. Add a `Stop` hook to `.claude/settings.json` — when any check fails, Claude is blocked from stopping and continues to fix the issues:
 
 ```json
 {
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "pnpm check-changed run --format claude-code-hooks"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+For [Copilot CLI](https://docs.github.com/en/copilot/reference/cli-command-reference#agentstop--subagentstop-decision-control), add an `agentStop` hook to `.github/hooks/check-changed.json`:
+
+```json
+{
+  "version": 1,
+  "hooks": {
+    "agentStop": [
+      {
+        "type": "command",
+        "bash": "pnpm check-changed run --format copilot-cli-hooks"
+      }
+    ]
+  }
+}
+```
+
+Both hook formats output nothing on success (allowing the agent to stop normally) and output a `{ "decision": "block", "reason": "..." }` JSON response on failure, which tells the agent to keep going and fix the errors.
+
+## Configuration
+
+All configuration lives in `.check-changedrc.json` at your project root:
+
+```json
+{
+  "$schema": "./node_modules/check-changed/config-schema.json",
   "defaults": {
     "changed": "untracked,unstaged,staged,branch:main",
     "target": "all"
@@ -79,96 +107,73 @@ check-changed --format json
     },
     "eslint": {
       "pattern": "\\.(m|c)?(j|t)sx?$",
-      "command": "eslint {FILES}",
+      "command": "eslint {{CHANGED_FILES}}",
       "group": "lint"
-    },
-    "vitest": {
-      "pattern": "\\.(m|c)?(j|t)sx?$",
-      "command": "vitest related --run {FILES}",
-      "group": "test"
     }
   }
 }
 ```
 
-### Changed Sources
+| Field                                  | Type     | Default      | Description                                                                |
+| -------------------------------------- | -------- | ------------ | -------------------------------------------------------------------------- |
+| `defaults.changed`                     | `string` | —            | Changed sources (comma-separated). See values below                        |
+| `defaults.target`                      | `string` | —            | Check groups to run (comma-separated, or `"all"`)                          |
+| `checks.<name>.pattern`                | `string` | —            | Regex matched against changed file paths                                   |
+| `checks.<name>.command`                | `string` | —            | Command to run. `{{CHANGED_FILES}}` is replaced with the matched file list |
+| `checks.<name>.group`                  | `string` | —            | Group name for `--target` filtering                                        |
+| `checks.<name>.changedFiles.separator` | `string` | `" "`        | Separator between file paths                                               |
+| `checks.<name>.changedFiles.path`      | `string` | `"relative"` | `"relative"` or `"absolute"`                                               |
 
-The `--changed` option (and `defaults.changed`) accepts a comma-separated list of:
+If a command omits `{{CHANGED_FILES}}`, it runs as-is whenever any file matches the pattern — useful for whole-project checks like `tsc --noEmit`. Checks with no matching files are skipped.
 
-| Source          | Git command                                | Description                           |
-| --------------- | ------------------------------------------ | ------------------------------------- |
-| `untracked`     | `git ls-files --others --exclude-standard` | New files not yet tracked             |
-| `unstaged`      | `git diff --name-only`                     | Modified but not staged               |
-| `staged`        | `git diff --cached --name-only`            | Staged for commit                     |
-| `branch:<name>` | `git diff --name-only <name>...HEAD`       | Changes since branching from `<name>` |
-| `sha:<sha>`     | `git diff --name-only <sha>...HEAD`        | Changes since a specific commit       |
+**Changed source values** for `defaults.changed` and the `--changed` CLI option:
 
-### Check Configuration
+| Value           | Description                           |
+| --------------- | ------------------------------------- |
+| `untracked`     | New files not yet tracked by git      |
+| `unstaged`      | Modified but not staged               |
+| `staged`        | Staged for commit                     |
+| `branch:<name>` | Changes since branching from `<name>` |
+| `sha:<sha>`     | Changes since a specific commit       |
 
-Each check has the following fields:
+## Patterns
 
-| Field              | Required | Description                                                               |
-| ------------------ | -------- | ------------------------------------------------------------------------- |
-| `pattern`          | Yes      | Regex pattern to match changed files against                              |
-| `command`          | Yes      | Command to execute. Use `{FILES}` as a placeholder for matched file paths |
-| `group`            | Yes      | Group name for `--target` filtering                                       |
-| `config.files-sep` | No       | Separator between file paths (default: `" "`)                             |
-| `config.relative`  | No       | Use relative paths instead of absolute (default: `false`)                 |
+### Workspace / monorepo
 
-If a command contains `{FILES}`, it is replaced with the matched file list. If it does not contain `{FILES}`, the command runs as-is when any file matches the pattern (useful for `tsc --noEmit` style whole-project checks).
-
-Checks that match no changed files are skipped.
-
-## CLI Reference
-
-```
-Usage: check-changed [options] [command]
-
-Options:
-  -V, --version            output the version number
-  -h, --help               display help for command
-
-Commands:
-  run [options]            Run configured checks against changed files (default)
-  setup                    Interactively create or update .check-changedrc.json
-  help [command]           display help for command
-
-Run options:
-  -c, --changed <sources>  Changed sources (comma-separated)
-  -t, --target <groups>    Target groups (comma-separated or "all")
-  -d, --dry-run            Show which checks would run without executing
-  -f, --format <format>    Output format: text (default) or json
-```
-
-## JSON Output
-
-With `--format json`, stdout contains only valid JSON:
+Use regex named capture groups to run commands per workspace. Captured values are available as `{{name}}` placeholders in the command:
 
 ```json
 {
-  "status": "failed",
-  "summary": {
-    "passed": 2,
-    "failed": 1,
-    "skipped": 0
-  },
-  "checks": [
-    { "name": "typecheck", "group": "typecheck", "status": "passed", "command": "tsc --noEmit" },
-    { "name": "eslint", "group": "lint", "status": "passed", "command": "eslint src/index.ts" },
-    {
-      "name": "vitest",
-      "group": "test",
-      "status": "failed",
-      "command": "vitest related --run src/index.ts",
-      "exitCode": 1,
-      "stdout": "...",
-      "stderr": "..."
-    }
-  ]
+  "typecheck": {
+    "pattern": "^packages/(?<pkg>[^/]+)/.*\\.(m|c)?tsx?$",
+    "command": "pnpm --filter @myorg/{{pkg}} typecheck",
+    "group": "typecheck"
+  }
 }
 ```
 
-Each check has a status of `skip`, `passed`, or `failed`. Failed checks include `exitCode`, `stdout`, and `stderr`. The process exits with code 1 if any check fails.
+If `packages/app/src/index.ts` and `packages/lib/src/utils.ts` are both changed, the check runs once per matched workspace (`typecheck[app]`, `typecheck[lib]`).
+
+### Relative paths and custom separators
+
+Some tools expect relative paths or a specific separator:
+
+```json
+{
+  "oxlint": {
+    "pattern": "\\.(m|c)?(j|t)sx?$",
+    "command": "oxlint {{CHANGED_FILES}}",
+    "group": "lint",
+    "changedFiles": { "path": "relative" }
+  },
+  "prettier": {
+    "pattern": "\\.(m|c)?(j|t)sx?$",
+    "command": "prettier --write {{CHANGED_FILES}}",
+    "group": "format",
+    "changedFiles": { "separator": ",", "path": "relative" }
+  }
+}
+```
 
 ## License
 

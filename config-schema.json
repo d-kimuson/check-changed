@@ -30,14 +30,14 @@
           "group": {
             "type": "string"
           },
-          "config": {
+          "changedFiles": {
             "type": "object",
             "properties": {
-              "files-sep": {
+              "separator": {
                 "type": "string"
               },
-              "relative": {
-                "type": "boolean"
+              "path": {
+                "enum": ["relative", "absolute"]
               }
             },
             "required": []

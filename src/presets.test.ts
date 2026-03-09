@@ -38,6 +38,7 @@ describe('presets', () => {
     expect(names).toContain('oxlint');
     expect(names).toContain('biome');
     expect(names).toContain('tsc');
+    expect(names).toContain('tsgo');
     expect(names).toContain('vitest');
     expect(names).toContain('jest');
   });
@@ -104,6 +105,17 @@ describe('preset regex patterns', () => {
 
   test('tsc matches TS-only extensions', () => {
     const pattern = getPattern('tsc');
+    for (const ext of tsOnlyExtensions) {
+      expect(matchesExt(pattern, ext)).toBe(true);
+    }
+    const jsOnly = ['.js', '.jsx', '.mjs', '.cjs'];
+    for (const ext of jsOnly) {
+      expect(matchesExt(pattern, ext)).toBe(false);
+    }
+  });
+
+  test('tsgo matches TS-only extensions', () => {
+    const pattern = getPattern('tsgo');
     for (const ext of tsOnlyExtensions) {
       expect(matchesExt(pattern, ext)).toBe(true);
     }

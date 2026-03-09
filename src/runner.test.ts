@@ -1,69 +1,94 @@
+import * as v from 'valibot';
 import { describe, test, expect } from 'vitest';
-import { buildCommand, runChecks, reportResults, reportResultsJson } from './runner.ts';
+import {
+  buildCommand,
+  runChecks,
+  reportResults,
+  reportResultsJson,
+  reportResultsHooks,
+} from './runner.ts';
 import type { CheckResult } from './types.ts';
+
+const HooksOutputSchema = v.object({
+  decision: v.string(),
+  reason: v.string(),
+});
 
 describe('buildCommand', () => {
   const cwd = '/project';
 
-  test('returns command as-is when no {FILES} and files matched', () => {
-    expect(buildCommand('tsc --noEmit', ['/project/src/a.ts'], undefined, cwd)).toBe(
-      'tsc --noEmit',
-    );
+  test('returns command as-is when no {{CHANGED_FILES}} and files matched', () => {
+    expect(buildCommand('tsc --noEmit', ['/project/src/a.ts'], {}, cwd)).toBe('tsc --noEmit');
   });
 
-  test('returns null when no {FILES} and no files matched', () => {
-    expect(buildCommand('tsc --noEmit', [], undefined, cwd)).toBeNull();
+  test('returns null when no {{CHANGED_FILES}} and no files matched', () => {
+    expect(buildCommand('tsc --noEmit', [], {}, cwd)).toBeNull();
   });
 
-  test('replaces {FILES} with absolute paths by default', () => {
+  test('replaces {{CHANGED_FILES}} with relative paths by default', () => {
     const result = buildCommand(
-      'eslint {FILES}',
+      'eslint {{CHANGED_FILES}}',
       ['/project/src/a.ts', '/project/src/b.ts'],
-      undefined,
+      {},
       cwd,
     );
-    expect(result).toBe('eslint /project/src/a.ts /project/src/b.ts');
+    expect(result).toBe("eslint 'src/a.ts' 'src/b.ts'");
   });
 
-  test('replaces {FILES} with relative paths when config.relative is true', () => {
-    const result = buildCommand('eslint {FILES}', ['/project/src/a.ts'], { relative: true }, cwd);
-    expect(result).toBe('eslint src/a.ts');
+  test('replaces {{CHANGED_FILES}} with absolute paths when configured', () => {
+    const result = buildCommand(
+      'eslint {{CHANGED_FILES}}',
+      ['/project/src/a.ts'],
+      { path: 'absolute' },
+      cwd,
+    );
+    expect(result).toBe("eslint '/project/src/a.ts'");
   });
 
   test('uses custom separator', () => {
     const result = buildCommand(
-      'cmd {FILES}',
+      'cmd {{CHANGED_FILES}}',
       ['/project/a.ts', '/project/b.ts'],
-      { 'files-sep': ',' },
+      { separator: ',' },
       cwd,
     );
-    expect(result).toBe('cmd /project/a.ts,/project/b.ts');
+    expect(result).toBe("cmd 'a.ts','b.ts'");
   });
 
-  test('returns null when {FILES} present but no files matched', () => {
-    expect(buildCommand('eslint {FILES}', [], undefined, cwd)).toBeNull();
+  test('returns null when {{CHANGED_FILES}} present but no files matched', () => {
+    expect(buildCommand('eslint {{CHANGED_FILES}}', [], {}, cwd)).toBeNull();
   });
 
   test('replaces group placeholders in command', () => {
     const result = buildCommand(
-      'tsc --project packages/{workspace}/tsconfig.json',
+      'tsc --project packages/{{workspace}}/tsconfig.json',
       ['/project/packages/app/src/a.ts'],
-      undefined,
+      {},
       cwd,
       { workspace: 'app' },
     );
     expect(result).toBe('tsc --project packages/app/tsconfig.json');
   });
 
+  test('quotes paths with spaces', () => {
+    const result = buildCommand('eslint {{CHANGED_FILES}}', ['/project/src/my file.ts'], {}, cwd);
+    expect(result).toBe("eslint 'src/my file.ts'");
+  });
+
+  test('escapes single quotes in paths', () => {
+    const result = buildCommand('eslint {{CHANGED_FILES}}', ["/project/src/it's.ts"], {}, cwd);
+    expect(result).toBe("eslint 'src/it'\\''s.ts'");
+  });
+
   test('replaces multiple group placeholders', () => {
     const result = buildCommand(
-      'cmd --scope {scope} --name {name} {FILES}',
+      'cmd --scope {{scope}} --name {{name}} {{CHANGED_FILES}}',
       ['/project/a.ts'],
-      undefined,
+      {},
       cwd,
       { scope: 'apps', name: 'web' },
     );
-    expect(result).toBe('cmd --scope apps --name web /project/a.ts');
+    expect(result).toBe("cmd --scope apps --name web 'a.ts'");
   });
 });
 
@@ -113,7 +138,7 @@ describe('runChecks', () => {
         'echo-group',
         {
           pattern: '^(?<workspace>app|lib)/.*\\.ts$',
-          command: 'echo {workspace}',
+          command: 'echo {{workspace}}',
           group: 'test',
         },
       ],
@@ -132,7 +157,7 @@ describe('runChecks', () => {
         'skip-group',
         {
           pattern: '^(?<workspace>app)/.*\\.css$',
-          command: 'echo {workspace}',
+          command: 'echo {{workspace}}',
           group: 'test',
         },
       ],
@@ -239,5 +264,79 @@ describe('reportResultsJson', () => {
         },
       ],
     });
+  });
+});
+
+describe('reportResultsHooks', () => {
+  const captureStdout = (fn: () => boolean): { result: boolean; output: string } => {
+    const chunks: string[] = [];
+    const orig = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (chunk: string) => {
+      chunks.push(chunk);
+      return true;
+    };
+    const result = fn();
+    process.stdout.write = orig;
+    return { result, output: chunks.join('') };
+  };
+
+  test('outputs nothing and returns true when all checks pass', () => {
+    const results: readonly CheckResult[] = [
+      { status: 'passed', name: 'a', group: 'test', command: 'echo a' },
+      { status: 'skip', name: 'b', group: 'lint' },
+    ];
+    const { result, output } = captureStdout(() => reportResultsHooks(results));
+    expect(result).toBe(true);
+    expect(output).toBe('');
+  });
+
+  test('outputs block decision with reason when any check fails', () => {
+    const results: readonly CheckResult[] = [
+      { status: 'passed', name: 'a', group: 'test', command: 'echo a' },
+      {
+        status: 'failed',
+        name: 'b',
+        group: 'lint',
+        command: 'eslint src/x.ts',
+        exitCode: 1,
+        stdout: 'src/x.ts: error',
+        stderr: '',
+      },
+    ];
+    const { result, output } = captureStdout(() => reportResultsHooks(results));
+    expect(result).toBe(false);
+    const parsed = v.parse(HooksOutputSchema, JSON.parse(output));
+    expect(parsed.decision).toBe('block');
+    expect(parsed.reason).toContain('check-changed');
+    expect(parsed.reason).toContain('b');
+    expect(parsed.reason).toContain('src/x.ts: error');
+  });
+
+  test('includes multiple failed checks in reason', () => {
+    const results: readonly CheckResult[] = [
+      {
+        status: 'failed',
+        name: 'lint',
+        group: 'lint',
+        command: 'eslint x.ts',
+        exitCode: 1,
+        stdout: 'lint error',
+        stderr: '',
+      },
+      {
+        status: 'failed',
+        name: 'typecheck',
+        group: 'typecheck',
+        command: 'tsc --noEmit',
+        exitCode: 1,
+        stdout: '',
+        stderr: 'type error',
+      },
+    ];
+    const { result, output } = captureStdout(() => reportResultsHooks(results));
+    expect(result).toBe(false);
+    const parsed = v.parse(HooksOutputSchema, JSON.parse(output));
+    expect(parsed.reason).toContain('lint');
+    expect(parsed.reason).toContain('typecheck');
   });
 });

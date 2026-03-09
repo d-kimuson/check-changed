@@ -9,7 +9,7 @@ const hasNamedGroups = (pattern: string): boolean => /\(\?<[^>]+>/.test(pattern)
 export const buildCommand = (
   command: string,
   matchedFiles: readonly string[],
-  config: CheckConfig['config'],
+  changedFiles: CheckConfig['changedFiles'],
   cwd: string,
   groups?: Record<string, string>,
 ): string | null => {
@@ -17,11 +17,11 @@ export const buildCommand = (
 
   if (groups) {
     for (const [key, value] of Object.entries(groups)) {
-      cmd = cmd.replaceAll(`{${key}}`, value);
+      cmd = cmd.replaceAll(`{{${key}}}`, value);
     }
   }
 
-  if (!cmd.includes('{FILES}')) {
+  if (!cmd.includes('{{CHANGED_FILES}}')) {
     return matchedFiles.length > 0 ? cmd : null;
   }
 
@@ -29,11 +29,12 @@ export const buildCommand = (
     return null;
   }
 
-  const sep = config?.['files-sep'] ?? ' ';
-  const paths =
-    config?.relative === true ? matchedFiles.map((f) => relative(cwd, f)) : matchedFiles;
+  const sep = changedFiles?.separator ?? ' ';
+  const resolved =
+    changedFiles?.path === 'absolute' ? matchedFiles : matchedFiles.map((f) => relative(cwd, f));
+  const paths = resolved.map((p) => `'${p.replaceAll("'", "'\\''")}'`);
 
-  return cmd.replace('{FILES}', paths.join(sep));
+  return cmd.replace('{{CHANGED_FILES}}', paths.join(sep));
 };
 
 const runCommand = (
@@ -72,7 +73,7 @@ const runSingleCheck = async (
   }
 
   const matched = matchFiles(changedFiles, check.pattern, cwd);
-  const command = buildCommand(check.command, matched, check.config, cwd);
+  const command = buildCommand(check.command, matched, check.changedFiles, cwd);
 
   if (command === null) {
     return [{ status: 'skip', name, group: check.group }];
@@ -100,7 +101,13 @@ const runGroupedCheck = async (
   const results = await Promise.all(
     [...grouped.entries()].map(async ([groupKey, entry]): Promise<CheckResult> => {
       const checkName = `${name}[${groupKey}]`;
-      const command = buildCommand(check.command, entry.files, check.config, cwd, entry.groups);
+      const command = buildCommand(
+        check.command,
+        entry.files,
+        check.changedFiles,
+        cwd,
+        entry.groups,
+      );
 
       if (command === null) {
         return { status: 'skip', name: checkName, group: check.group };
@@ -174,7 +181,13 @@ export const dryRunChecks = (
       }
       for (const [groupKey, entry] of grouped) {
         const checkName = `${name}[${groupKey}]`;
-        const command = buildCommand(check.command, entry.files, check.config, cwd, entry.groups);
+        const command = buildCommand(
+          check.command,
+          entry.files,
+          check.changedFiles,
+          cwd,
+          entry.groups,
+        );
         if (command === null) {
           log(`  [skip] ${checkName} (no matching files)`);
         } else {
@@ -184,7 +197,7 @@ export const dryRunChecks = (
       }
     } else {
       const matched = matchFiles(changedFiles, check.pattern, cwd);
-      const command = buildCommand(check.command, matched, check.config, cwd);
+      const command = buildCommand(check.command, matched, check.changedFiles, cwd);
 
       if (command === null) {
         log(`  [skip] ${name} (no matching files)`);
@@ -203,6 +216,14 @@ export const reportResults = (results: readonly CheckResult[]): boolean => {
   const passed = results.filter((r) => r.status === 'passed');
   const failed = results.filter((r) => r.status === 'failed');
 
+  if (failed.length > 0) {
+    for (const r of failed) {
+      logError(`\n── ${r.name} ──`);
+      if (r.stdout) logError(r.stdout.trimEnd());
+      if (r.stderr) logError(r.stderr.trimEnd());
+    }
+  }
+
   log('');
 
   for (const r of skipped) {
@@ -216,17 +237,48 @@ export const reportResults = (results: readonly CheckResult[]): boolean => {
   }
 
   if (failed.length > 0) {
-    for (const r of failed) {
-      logError(`\n── ${r.name} ──`);
-      if (r.stdout) logError(r.stdout.trimEnd());
-      if (r.stderr) logError(r.stderr.trimEnd());
-    }
     log(`\n${passed.length} passed, ${failed.length} failed, ${skipped.length} skipped`);
     return false;
   }
 
   log(`\n${passed.length} passed, ${skipped.length} skipped`);
   return true;
+};
+
+// -- Report (Claude Code hooks) --
+
+export const reportResultsHooks = (results: readonly CheckResult[]): boolean => {
+  const failed = results.filter((r) => r.status === 'failed');
+
+  if (failed.length === 0) {
+    return true;
+  }
+
+  const failureDetails = failed
+    .map((r) => {
+      const lines = [`── ${r.name} ($ ${r.command}) ──`];
+      if (r.stdout) lines.push(r.stdout.trimEnd());
+      if (r.stderr) lines.push(r.stderr.trimEnd());
+      return lines.join('\n');
+    })
+    .join('\n\n');
+
+  const passed = results.filter((r) => r.status === 'passed').length;
+  const skipped = results.filter((r) => r.status === 'skip').length;
+  const summary = `${passed} passed, ${failed.length} failed, ${skipped} skipped`;
+
+  const reason = [
+    'check-changed blocked: checks failed. Fix the errors below and try again.',
+    '',
+    failureDetails,
+    '',
+    summary,
+  ].join('\n');
+
+  const output = { decision: 'block', reason };
+  log(JSON.stringify(output));
+
+  return false;
 };
 
 // -- Report (JSON) --

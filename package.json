@@ -1,0 +1,48 @@
+{
+  "name": "check-changed",
+  "version": "0.0.0",
+  "description": "Lightweight adapter for running verification tools against git-changed files, with built-in AI agent hook support",
+  "license": "MIT",
+  "bin": {
+    "check-changed": "./dist/bin.mjs"
+  },
+  "files": [
+    "dist",
+    "config-schema.json"
+  ],
+  "type": "module",
+  "scripts": {
+    "cli": "tsx ./src/bin.ts",
+    "test": "vitest run",
+    "build": "tsdown",
+    "generate-schema": "tsx scripts/generate-schema.ts",
+    "typecheck": "tsc --noEmit",
+    "lint": "pnpm /^lint:.*/",
+    "lint:oxlint": "oxlint --type-aware --type-check --ignore-path .gitignore --report-unused-disable-directives --tsconfig ./tsconfig.json",
+    "lint:oxfmt": "pnpm fix:oxfmt --check",
+    "fix": "pnpm /^fix:.*/",
+    "fix:oxlint": "pnpm lint:oxlint --fix --fix-suggestions --fix-dangerously",
+    "fix:oxfmt": "oxfmt --ignore-path .gitignore --no-error-on-unmatched-pattern",
+    "prepare": "lefthook install"
+  },
+  "dependencies": {
+    "commander": "14.0.3",
+    "inquirer": "13.3.0",
+    "valibot": "1.2.0"
+  },
+  "devDependencies": {
+    "@tsconfig/strictest": "2.0.8",
+    "@types/inquirer": "9.0.9",
+    "@types/node": "25.3.3",
+    "@valibot/to-json-schema": "1.5.0",
+    "lefthook": "2.1.2",
+    "oxfmt": "0.36.0",
+    "oxlint": "1.51.0",
+    "oxlint-tsgolint": "0.16.0",
+    "tsdown": "0.20.3",
+    "tsx": "4.21.0",
+    "typescript": "5.9.3",
+    "vitest": "4.0.18"
+  },
+  "packageManager": "pnpm@10.31.0+sha512.e3927388bfaa8078ceb79b748ffc1e8274e84d75163e67bc22e06c0d3aed43dd153151cbf11d7f8301ff4acb98c68bdc5cadf6989532801ffafe3b3e4a63c268"
+}
