@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.0.1-beta.5
+
+### &nbsp;&nbsp;&nbsp;Features
+
+- Rename to gatecheck with YAML config, template engine, and review support &nbsp;-&nbsp; by **d-kimsuon** and **Claude Sonnet 4.6** [<samp>(77b29)</samp>](https://github.com/d-kimuson/check-changed/commit/77b29eb)
+- Restore format options, setup wizard, presets, and shell escaping &nbsp;-&nbsp; by **d-kimsuon** and **Claude Sonnet 4.6** [<samp>(22260)</samp>](https://github.com/d-kimuson/check-changed/commit/22260b3)
+
+### &nbsp;&nbsp;&nbsp;Bug Fixes
+
+- Remove unused prompt field and validate match regex at config load &nbsp;-&nbsp; by **d-kimsuon** and **Claude Sonnet 4.6** [<samp>(01369)</samp>](https://github.com/d-kimuson/check-changed/commit/01369a2)
+
+##### &nbsp;&nbsp;&nbsp;&nbsp;[View changes on GitHub](https://github.com/d-kimuson/check-changed/compare/v0.0.1-beta.4...0.0.1-beta.5)
+
 ## 0.0.1-beta.4
 
 _No significant changes_
