@@ -46,6 +46,20 @@ describe('GatecheckConfigSchema', () => {
     expect(() => v.parse(GatecheckConfigSchema, input)).toThrow(/Invalid/i);
   });
 
+  test('rejects invalid regex in check match', () => {
+    const input = {
+      checks: [{ name: 'lint', match: '([invalid', group: 'lint', command: 'eslint' }],
+    };
+    expect(() => v.parse(GatecheckConfigSchema, input)).toThrow(/Invalid regular expression/);
+  });
+
+  test('rejects invalid regex in review match', () => {
+    const input = {
+      reviews: [{ name: 'review', match: '(?P<bad)', command: 'echo' }],
+    };
+    expect(() => v.parse(GatecheckConfigSchema, input)).toThrow(/Invalid regular expression/);
+  });
+
   test('validates config with defaults', () => {
     const input = {
       defaults: {

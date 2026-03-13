@@ -5,6 +5,18 @@ import { parse as parseYaml } from 'yaml';
 
 // -- Schema --
 
+const RegexStringSchema = v.pipe(
+  v.string(),
+  v.check((value): boolean => {
+    try {
+      new RegExp(value);
+      return true;
+    } catch {
+      return false;
+    }
+  }, 'Invalid regular expression'),
+);
+
 const ChangedFilesSchema = v.object({
   separator: v.optional(v.string()),
   path: v.optional(v.picklist(['relative', 'absolute'])),
@@ -12,7 +24,7 @@ const ChangedFilesSchema = v.object({
 
 const CheckEntrySchema = v.object({
   name: v.string(),
-  match: v.string(),
+  match: RegexStringSchema,
   exclude: v.optional(v.string()),
   group: v.string(),
   command: v.string(),
@@ -21,10 +33,9 @@ const CheckEntrySchema = v.object({
 
 const ReviewEntrySchema = v.object({
   name: v.string(),
-  match: v.string(),
+  match: RegexStringSchema,
   exclude: v.optional(v.string()),
   vars: v.optional(v.record(v.string(), v.string())),
-  prompt: v.optional(v.string()),
   command: v.string(),
   fallbacks: v.optional(v.array(v.string())),
 });

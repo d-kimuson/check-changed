@@ -26,7 +26,6 @@ export type ReviewEntry = {
   readonly match: string;
   readonly exclude?: string;
   readonly vars?: Readonly<Record<string, string>>;
-  readonly prompt?: string;
   readonly command: string;
   readonly fallbacks?: readonly string[];
 };
