@@ -1,3 +1,10 @@
+# Nix
+result
+
+# CodeQL
+*.sarif
+codeql-db/
+
 # Logs
 logs
 *.log
@@ -145,3 +152,6 @@ vite.config.ts.timestamp-*
 
 # docs
 docs/tmp
+
+# direnv
+.direnv
