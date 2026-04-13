@@ -7,7 +7,6 @@ import { afterEach, beforeEach, describe, expect, test } from 'vitest';
 
 const execFileAsync = promisify(execFile);
 
-const tsxPath = join(process.cwd(), 'node_modules', '.bin', 'tsx');
 const cliPath = join(process.cwd(), 'src', 'bin.ts');
 
 const runCli = async (
@@ -15,7 +14,7 @@ const runCli = async (
   args: readonly string[],
 ): Promise<{ readonly code: number; readonly stdout: string; readonly stderr: string }> => {
   try {
-    const { stdout, stderr } = await execFileAsync(tsxPath, [cliPath, ...args], { cwd });
+    const { stdout, stderr } = await execFileAsync(process.execPath, [cliPath, ...args], { cwd });
     return { code: 0, stdout, stderr };
   } catch (error) {
     if (error instanceof Error && 'code' in error && 'stdout' in error && 'stderr' in error) {
