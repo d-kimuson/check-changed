@@ -3,6 +3,10 @@
   "version": "0.0.1-beta.8",
   "description": "Quality gate for git changes — run checks and AI reviews against changed files",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/d-kimuson/gatecheck"
+  },
   "bin": {
     "gatecheck": "./dist/bin.mjs"
   },
